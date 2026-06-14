@@ -1,279 +1,258 @@
-import { useRef, useState } from 'react';
+import { router } from 'expo-router';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BottomTabBar from '../components/BottomTabBar';
-import ReplineLogo from '../components/ReplineLogo';
 
 const PRIMARY = '#2ca48e';
-const DARK = '#0F172A';
-
-interface Message {
-  id: string;
-  text: string;
-  isUser: boolean;
-}
+const GEMINI_API_KEY = 'AIzaSyB6q-587pjdtUfchn3sqNdur2cH5v5rDv4';
 
 const SUGGESTIONS = [
-  { id: '1', label: '🎯 Mənə uyğun müəllim tap' },
-  { id: '2', label: '💰 Büdcəmə uyğun' },
-  { id: '3', label: '⭐ Ən yüksək reytingli' },
+  '🎯 Mənə uyğun müəllim tap',
+  '💰 Büdcəmə uyğun müəllim',
+  '⭐ Ən yüksək reytingli müəllim',
 ];
 
-const AI_REPLIES: Record<string, string> = {
-  '🎯 Mənə uyğun müəllim tap':
-    'Sizin üçün Vüsalə Kərimova müəllimini tövsiyə edirəm! ⭐ 4.9 reytinq, 30 AZN/saat. Hər şagirdə fərdi yanaşması ilə tanınır. Profili yoxlamaq istərsinizmi?',
-  '💰 Büdcəmə uyğun':
-    'Büdcənizə uyğun ən yaxşı seçimlər:\n• Vüsalə Kərimova — 30 AZN/saat ⭐ 4.9\n• Samirə Haqverdiyeva — 30 AZN/saat ⭐ 4.9\n• Lalə Kərimova — 30 AZN/saat ⭐ 4.8',
-  '⭐ Ən yüksək reytingli':
-    'Ən yüksək reytinqli müəllimlər:\n🥇 Vüsalə Kərimova (4.9★) — İnformatika\n🥇 Samirə Haqverdiyeva (4.9★) — Azərbaycan dili\n🥈 Pərvanə Abdullayeva (4.8★) — İngilis dili',
+type Message = {
+  role: 'user' | 'ai';
+  text: string;
 };
 
-const DEFAULT_REPLY =
-  'Başa düşdüm! Sizin üçün uyğun müəllim tapacağam. Hansı fənn üzrə dərs almaq istərdiniz?';
-
-const INITIAL_MESSAGES: Message[] = [
-  {
-    id: '0',
-    text: 'Salam! 👋 Sizə ən uyğun müəllimi tapmaqda kömək edə bilərəm. Aşağıdakı seçimlərdən birini seçin və ya birbaşa sualınızı yazın.',
-    isUser: false,
-  },
-];
-
 export default function AIAssistantScreen() {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: 'ai',
+      text: 'Salam! 👋 Sizə ən uyğun müəllimi tapmaqda kömək edə bilərəm. Aşağıdakı seçimlərdən birini seçin və ya birbaşa sualınızı yazın.',
+    },
+  ]);
   const [input, setInput] = useState('');
-  const scrollRef = useRef<ScrollView>(null);
+  const [loading, setLoading] = useState(false);
 
-  function send(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const userMsg: Message = { id: `u-${Date.now()}`, text: trimmed, isUser: true };
-    const reply = AI_REPLIES[trimmed] ?? DEFAULT_REPLY;
-    const aiMsg: Message = { id: `a-${Date.now()}`, text: reply, isUser: false };
-    setMessages((prev) => [...prev, userMsg, aiMsg]);
+  const sendMessage = async (text: string) => {
+    if (!text.trim()) return;
+
+    const userMessage: Message = { role: 'user', text };
+    setMessages(prev => [...prev, userMessage]);
     setInput('');
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Sən Repline adlı Azərbaycan repetitorluq platformasının AI köməkçisisən. Şagirdlərə ən uyğun müəllimi tapmaqda kömək edirsən. Qısa, mehriban və Azərbaycan dilində cavab ver. İstifadəçi sualı: ${text}`,
+                  },
+                ],
+              },
+            ],
+          }),
+        }
+      );
+
+      const data = await response.json();
+      const aiText =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        'Bağışlayın, cavab verə bilmədim. Yenidən cəhd edin.';
+
+      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        { role: 'ai', text: 'Xəta baş verdi. İnternet bağlantınızı yoxlayın.' },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* Dark header */}
-      <View style={styles.header}>
-        <ReplineLogo size="sm" textColor="#ffffff" />
-        <Text style={styles.headerTitle}>AI Köməkçi 🤖</Text>
-        <Text style={styles.headerSubtitle}>Ən uyğun müəllimi tapaq</Text>
+    <View style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
 
-        {/* Suggestion chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.suggestions}
-        >
-          {SUGGESTIONS.map((s) => (
-            <TouchableOpacity
-              key={s.id}
-              style={styles.suggestionChip}
-              onPress={() => send(s.label)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.suggestionText}>{s.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+          <View style={styles.header}>
+            <Pressable onPress={() => router.push('/')}>
+              <Text style={styles.backText}>← Geri</Text>
+            </Pressable>
+            <Text style={styles.title}>AI Köməkçi 🤖</Text>
+            <Text style={styles.subtitle}>Ən uyğun müəllimi tapaq</Text>
+          </View>
 
-      {/* Chat area */}
-      <KeyboardAvoidingView
-        style={styles.chatArea}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
-        <ScrollView
-          ref={scrollRef}
-          style={styles.chat}
-          contentContainerStyle={styles.chatContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {messages.map((msg) => (
-            <View
-              key={msg.id}
-              style={[styles.bubble, msg.isUser ? styles.bubbleUser : styles.bubbleAI]}
-            >
-              {!msg.isUser && (
+          <View style={styles.suggestions}>
+            {SUGGESTIONS.map(s => (
+              <Pressable
+                key={s}
+                style={styles.chip}
+                onPress={() => sendMessage(s)}>
+                <Text style={styles.chipText}>{s}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <ScrollView
+            style={styles.chat}
+            contentContainerStyle={styles.chatContent}>
+            {messages.map((msg, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.bubble,
+                  msg.role === 'user' ? styles.userBubble : styles.aiBubble,
+                ]}>
+                {msg.role === 'ai' && (
+                  <View style={styles.aiAvatar}>
+                    <Text style={styles.aiAvatarText}>AI</Text>
+                  </View>
+                )}
+                <View
+                  style={[
+                    styles.bubbleText,
+                    msg.role === 'user'
+                      ? styles.userBubbleText
+                      : styles.aiBubbleText,
+                  ]}>
+                  <Text
+                    style={
+                      msg.role === 'user'
+                        ? styles.userText
+                        : styles.aiText
+                    }>
+                    {msg.text}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {loading && (
+              <View style={styles.bubble}>
                 <View style={styles.aiAvatar}>
                   <Text style={styles.aiAvatarText}>AI</Text>
                 </View>
-              )}
-              <View
-                style={[
-                  styles.bubbleBody,
-                  msg.isUser ? styles.bubbleBodyUser : styles.bubbleBodyAI,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.bubbleText,
-                    msg.isUser ? styles.bubbleTextUser : styles.bubbleTextAI,
-                  ]}
-                >
-                  {msg.text}
-                </Text>
+                <View style={styles.aiBubbleText}>
+                  <Text style={styles.aiText}>Yazır...</Text>
+                </View>
               </View>
-            </View>
-          ))}
-        </ScrollView>
+            )}
+          </ScrollView>
 
-        {/* Input row */}
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            placeholder="Mesaj yazın..."
-            placeholderTextColor="#9ca3af"
-            value={input}
-            onChangeText={setInput}
-            onSubmitEditing={() => send(input)}
-            returnKeyType="send"
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]}
-            onPress={() => send(input)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.sendIcon}>➤</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="Mesaj yazın..."
+              placeholderTextColor="#94a3b8"
+              value={input}
+              onChangeText={setInput}
+              multiline
+            />
+            <Pressable
+              style={[styles.sendBtn, !input.trim() && styles.sendBtnDisabled]}
+              onPress={() => sendMessage(input)}
+              disabled={!input.trim() || loading}>
+              <Text style={styles.sendIcon}>➤</Text>
+            </Pressable>
+          </View>
 
-        <BottomTabBar />
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+
+      <View style={styles.bottomBar}>
+        <Pressable style={styles.tab} onPress={() => router.push('/')}>
+          <Text style={styles.tabIcon}>🏠</Text>
+          <Text style={styles.tabLabel}>Ana səhifə</Text>
+        </Pressable>
+        <Pressable style={styles.tab} onPress={() => router.push('/search')}>
+          <Text style={styles.tabIcon}>🔍</Text>
+          <Text style={styles.tabLabel}>Axtar</Text>
+        </Pressable>
+        <Pressable style={[styles.tab, styles.tabActive]}>
+          <Text style={styles.tabIcon}>🤖</Text>
+          <Text style={[styles.tabLabel, styles.tabLabelActive]}>AI</Text>
+        </Pressable>
+        <Pressable style={styles.tab} onPress={() => router.push('/profile')}>
+          <Text style={styles.tabIcon}>👤</Text>
+          <Text style={styles.tabLabel}>Profil</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: DARK },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-    gap: 6,
-  },
-  headerTitle: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: '#ffffff',
-    marginTop: 12,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#94a3b8',
-    marginBottom: 8,
-  },
+  container: { flex: 1, backgroundColor: '#0F172A' },
+  safeArea: { flex: 1 },
+  flex: { flex: 1 },
+  header: { padding: 20, paddingBottom: 12 },
+  backText: { fontSize: 14, color: PRIMARY, marginBottom: 8 },
+  title: { fontSize: 22, fontWeight: '700', color: '#F8FAFC' },
+  subtitle: { fontSize: 13, color: '#64748b', marginTop: 2 },
   suggestions: {
-    gap: 8,
-    paddingVertical: 4,
+    flexDirection: 'row', flexWrap: 'wrap',
+    gap: 8, paddingHorizontal: 20, marginBottom: 12,
   },
-  suggestionChip: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+  chip: {
+    backgroundColor: 'rgba(44,164,142,0.15)',
+    borderWidth: 1, borderColor: 'rgba(44,164,142,0.3)',
+    borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7,
   },
-  suggestionText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  chatArea: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-  chat: { flex: 1 },
-  chatContent: {
-    padding: 16,
-    gap: 14,
-    paddingBottom: 8,
-  },
-  bubble: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-end',
-  },
-  bubbleUser: {
-    justifyContent: 'flex-end',
-  },
-  bubbleAI: {
-    justifyContent: 'flex-start',
-  },
+  chipText: { fontSize: 12, color: PRIMARY },
+  chat: { flex: 1, paddingHorizontal: 16 },
+  chatContent: { paddingBottom: 16, gap: 12 },
+  bubble: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  userBubble: { flexDirection: 'row-reverse' },
+  aiBubble: { flexDirection: 'row' },
   aiAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: PRIMARY,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
+    alignItems: 'center', justifyContent: 'center',
   },
-  aiAvatarText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  bubbleBody: {
-    maxWidth: '75%',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bubbleBodyUser: {
-    backgroundColor: PRIMARY,
-    borderBottomRightRadius: 4,
-  },
-  bubbleBodyAI: {
-    backgroundColor: '#f3f4f6',
-    borderBottomLeftRadius: 4,
-  },
-  bubbleText: { fontSize: 14, lineHeight: 20 },
-  bubbleTextUser: { color: '#ffffff' },
-  bubbleTextAI: { color: DARK },
+  aiAvatarText: { fontSize: 9, color: '#fff', fontWeight: '700' },
+  bubbleText: { maxWidth: '78%', borderRadius: 14, padding: 12 },
+  userBubbleText: { backgroundColor: PRIMARY, borderBottomRightRadius: 4 },
+  aiBubbleText: { backgroundColor: '#1e293b', borderBottomLeftRadius: 4 },
+  userText: { fontSize: 14, color: '#ffffff', lineHeight: 20 },
+  aiText: { fontSize: 14, color: '#e2e8f0', lineHeight: 20 },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    gap: 10,
-    backgroundColor: '#ffffff',
+    flexDirection: 'row', alignItems: 'flex-end',
+    gap: 10, padding: 12,
+    borderTopWidth: 0.5, borderTopColor: '#1e293b',
+    backgroundColor: '#0F172A',
   },
   input: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    fontSize: 15,
-    color: DARK,
-    borderWidth: 1.5,
-    borderColor: '#e5e7eb',
+    flex: 1, backgroundColor: '#1e293b',
+    borderRadius: 20, paddingHorizontal: 16,
+    paddingVertical: 10, fontSize: 14,
+    color: '#F8FAFC', maxHeight: 100,
   },
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40, height: 40, borderRadius: 20,
     backgroundColor: PRIMARY,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
-  sendBtnDisabled: { opacity: 0.4 },
-  sendIcon: { color: '#ffffff', fontSize: 16 },
+  sendBtnDisabled: { backgroundColor: '#334155' },
+  sendIcon: { fontSize: 16, color: '#ffffff' },
+  bottomBar: {
+    flexDirection: 'row', backgroundColor: '#ffffff',
+    paddingVertical: 8, borderTopWidth: 0.5, borderTopColor: '#f1f5f9',
+  },
+  tab: { flex: 1, alignItems: 'center', gap: 2 },
+  tabActive: { borderTopWidth: 2, borderTopColor: PRIMARY },
+  tabIcon: { fontSize: 20 },
+  tabLabel: { fontSize: 10, color: '#94a3b8' },
+  tabLabelActive: { color: PRIMARY, fontWeight: '600' },
 });
